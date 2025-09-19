@@ -1,0 +1,20 @@
+{
+"name": "آٹا چکی کیلکولیٹر",
+"short_name": "چکی کیلکولیٹر",
+"start_url": ".",
+"display": "standalone",
+"background_color": "#f0f2f5",
+"theme_color": "#2563eb",
+"icons": [
+{
+"src": "https://www.google.com/search?q=https://i.imgur.com/8Qh1eUe.png",
+"sizes": "192x192",
+"type": "image/png"
+},
+{
+"src": "https://www.google.com/search?q=https://i.imgur.com/8Qh1eUe.png",
+"sizes": "512x512",
+"type": "image/png"
+}
+]
+}
