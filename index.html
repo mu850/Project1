@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>آٹا چکی کیلکولیٹر</title>
     <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic+Urdu:wght@400..700&display=swap');
@@ -78,6 +78,20 @@
         }
         .payment-history-item:last-child {
             border-bottom: none;
+        }
+        .transactions-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .transaction-item {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0.5rem 0;
+        }
+        details > summary {
+            list-style: none;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
         }
     </style>
 </head>
@@ -227,7 +241,7 @@
         // PWA Service Worker Registration
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js').then(registration => {
+                navigator.serviceWorker.register('/service-worker.js').then(registration => {
                     console.log('Service Worker registered with scope:', registration.scope);
                 }).catch(err => {
                     console.error('Service Worker registration failed:', err);
@@ -368,7 +382,8 @@
                     amount: totalAmount,
                     date: now.toLocaleDateString('ur-PK'),
                     time: now.toLocaleTimeString('ur-PK', { hour: '2-digit', minute: '2-digit' }),
-                    noSafai, noKatoti, billInFlour
+                    noSafai, noKatoti, billInFlour,
+                    transactionType: 'Initial Entry'
                 }]
             };
 
@@ -407,3 +422,399 @@
             currentReceiptData = null;
             editingRecordId = null;
             receiptSection.classList.add('hidden');
+            form.reset();
+        });
+
+        confirmActionBtn.addEventListener('click', () => {
+            confirmationModal.classList.add('hidden');
+            if (currentAction === 'save-backup') {
+                saveRecord('backup');
+            } else if (currentAction === 'save-khata') {
+                saveRecord('khata');
+            } else if (currentAction === 'delete-record') {
+                deleteRecord(currentRecordToPay.id, currentRecordToPay.type);
+            } else if (currentAction === 'move-to-khata') {
+                moveToKhata(currentRecordToPay.id);
+            }
+        });
+
+        cancelActionBtn.addEventListener('click', () => {
+            confirmationModal.classList.add('hidden');
+            currentAction = null;
+        });
+
+        function saveRecord(type) {
+            if (!currentReceiptData) return;
+
+            const records = JSON.parse(localStorage.getItem(type)) || [];
+            if (editingRecordId) {
+                const recordIndex = records.findIndex(rec => rec.id === editingRecordId);
+                if (recordIndex > -1) {
+                    records[recordIndex] = currentReceiptData;
+                }
+            } else {
+                records.push(currentReceiptData);
+            }
+            localStorage.setItem(type, JSON.stringify(records));
+
+            currentReceiptData = null;
+            editingRecordId = null;
+            editingRecordType = null;
+            receiptSection.classList.add('hidden');
+            form.reset();
+            viewRecordsBtn.click();
+        }
+
+        function moveToKhata(id) {
+            const backupRecords = JSON.parse(localStorage.getItem('backup')) || [];
+            const khataRecords = JSON.parse(localStorage.getItem('khata')) || [];
+            
+            const recordToMove = backupRecords.find(rec => rec.id === id);
+            if (recordToMove) {
+                if (!recordToMove.paymentHistory) {
+                    recordToMove.paymentHistory = [];
+                }
+                khataRecords.push(recordToMove);
+                const updatedBackup = backupRecords.filter(rec => rec.id !== id);
+                localStorage.setItem('backup', JSON.stringify(updatedBackup));
+                localStorage.setItem('khata', JSON.stringify(khataRecords));
+            }
+            viewRecordsBtn.click();
+        }
+        
+        function handleRecordAction(event) {
+            const target = event.target;
+            const action = target.getAttribute('data-action');
+            const id = parseFloat(target.getAttribute('data-id'));
+            const type = target.getAttribute('data-type');
+            if (!action || !id || !type) return;
+
+            if (action === 'delete') {
+                currentAction = 'delete-record';
+                currentRecordToPay = {id, type};
+                confirmationText.textContent = `کیا آپ واقعی یہ ریکارڈ (${type}) سے حذف کرنا چاہتے ہیں؟`;
+                confirmationModal.classList.remove('hidden');
+            } else if (action === 'edit') {
+                editRecord(id, type);
+            } else if (action === 'pay') {
+                showPaymentModal(id, type);
+            } else if (action === 'move-to-khata') {
+                 currentAction = 'move-to-khata';
+                 currentRecordToPay = {id, type};
+                 confirmationText.textContent = 'کیا آپ واقعی یہ ریکارڈ کھاتے میں شامل کرنا چاہتے ہیں؟';
+                 confirmationModal.classList.remove('hidden');
+            } else if (action === 'add-weight') {
+                showAddWeightModal(id, type);
+            }
+        }
+
+        function deleteRecord(id, type) {
+            const records = JSON.parse(localStorage.getItem(type)) || [];
+            const updatedRecords = records.filter(record => record.id !== id);
+            localStorage.setItem(type, JSON.stringify(updatedRecords));
+            viewRecordsBtn.click();
+        }
+
+        function editRecord(id, type) {
+            const records = JSON.parse(localStorage.getItem(type)) || [];
+            const record = records.find(rec => rec.id === id);
+            if (!record) return;
+
+            if (!record.paymentHistory) {
+                record.paymentHistory = [];
+            }
+
+            editingRecordId = id;
+            editingRecordType = type;
+            
+            document.getElementById('customerName').value = record.customerName;
+            document.getElementById('totalWeight').value = record.totalWeight;
+            document.getElementById('flourRatePerKg').value = record.flourRatePerKg;
+            document.getElementById('advanceFlour').value = record.advanceFlour;
+            document.getElementById('noSafai').checked = record.noSafai;
+            document.getElementById('noKatoti').checked = record.noKatoti;
+            document.getElementById('billInFlour').checked = record.billInFlour;
+            
+            document.getElementById('form-section').scrollIntoView({ behavior: 'smooth' });
+            receiptSection.classList.add('hidden');
+        }
+
+        function showPaymentModal(id, type) {
+            const records = JSON.parse(localStorage.getItem(type)) || [];
+            const record = records.find(rec => rec.id === id);
+            if (!record) return;
+            currentRecordToPay = record;
+            paymentAmountDisplay.textContent = record.balance;
+            paidAmountInput.value = '';
+            paymentModal.classList.remove('hidden');
+        }
+
+        submitPaymentBtn.addEventListener('click', () => {
+            const paidAmount = parseFloat(paidAmountInput.value) || 0;
+            if (paidAmount <= 0) {
+                // Use a message box instead of alert
+                // alert('وصول شدہ رقم درست درج کریں۔');
+                return;
+            }
+
+            const records = JSON.parse(localStorage.getItem('khata')) || [];
+            const recordIndex = records.findIndex(rec => rec.id === currentRecordToPay.id);
+            
+            if (recordIndex > -1) {
+                const newBalance = parseFloat(records[recordIndex].balance) - paidAmount;
+                records[recordIndex].balance = newBalance.toFixed(2);
+
+                const newPayment = {
+                    date: new Date().toLocaleDateString('ur-PK'),
+                    amount: paidAmount.toFixed(2)
+                };
+                if (!records[recordIndex].paymentHistory) {
+                    records[recordIndex].paymentHistory = [];
+                }
+                records[recordIndex].paymentHistory.push(newPayment);
+
+                if (newBalance <= 0) {
+                    records[recordIndex].status = 'paid';
+                }
+                localStorage.setItem('khata', JSON.stringify(records));
+            }
+
+            currentRecordToPay = null;
+            paymentModal.classList.add('hidden');
+            viewRecordsBtn.click();
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            currentRecordToPay = null;
+            paymentModal.classList.add('hidden');
+        });
+        
+        function showAddWeightModal(id, type) {
+            const records = JSON.parse(localStorage.getItem(type)) || [];
+            const record = records.find(rec => rec.id === id);
+            if (!record) return;
+            currentRecordToAddWeight = record;
+            addWeightCustomerName.textContent = record.customerName;
+            document.getElementById('additional-weight').value = '';
+            document.getElementById('addFlourRatePerKg').value = record.flourRatePerKg;
+            document.getElementById('addAdvanceFlour').value = 0;
+            document.getElementById('addNoSafai').checked = record.noSafai;
+            document.getElementById('addNoKatoti').checked = record.noKatoti;
+            document.getElementById('addBillInFlour').checked = record.billInFlour;
+            addWeightModal.classList.remove('hidden');
+        }
+        
+        closeAddModalBtn.addEventListener('click', () => {
+            currentRecordToAddWeight = null;
+            addWeightModal.classList.add('hidden');
+        });
+
+        submitAddWeightBtn.addEventListener('click', () => {
+            const additionalWeight = parseFloat(document.getElementById('additional-weight').value) || 0;
+            const flourRatePerKg = parseFloat(document.getElementById('addFlourRatePerKg').value) || 0;
+            const advanceFlour = parseFloat(document.getElementById('addAdvanceFlour').value) || 0;
+            const noSafai = document.getElementById('addNoSafai').checked;
+            const noKatoti = document.getElementById('addNoKatoti').checked;
+            const billInFlour = document.getElementById('addBillInFlour').checked;
+
+            if (additionalWeight <= 0) {
+                // Use a message box instead of alert
+                // alert('اضافی وزن درست درج کریں۔');
+                return;
+            }
+
+            const records = JSON.parse(localStorage.getItem('khata')) || [];
+            const recordIndex = records.findIndex(rec => rec.id === currentRecordToAddWeight.id);
+            
+            if (recordIndex > -1) {
+                let updatedRecord = { ...records[recordIndex] };
+                
+                // Calculate new transaction details
+                const actualGrindingRate = noSafai ? GRINDING_RATE_WITHOUT_SAFAI : GRINDING_RATE_WITH_SAFAI;
+                const newGrindingCost = additionalWeight * actualGrindingRate;
+                const newKatotiWeight = additionalWeight * 0.05;
+                const newKatotiValue = newKatotiWeight * flourRatePerKg;
+                
+                let newTransactionAmount = newGrindingCost;
+                if (noKatoti) {
+                    newTransactionAmount = newGrindingCost + newKatotiValue;
+                }
+
+                let newTransactionNetWeight = additionalWeight;
+                if (!noKatoti) {
+                    newTransactionNetWeight -= newKatotiWeight;
+                }
+                
+                let flourEquivalent = 0;
+                if (billInFlour) {
+                    flourEquivalent = newTransactionAmount / flourRatePerKg;
+                    newTransactionNetWeight -= flourEquivalent;
+                }
+                
+                if (advanceFlour > 0) {
+                    newTransactionNetWeight -= advanceFlour;
+                }
+
+                const newTransaction = {
+                    weight: additionalWeight.toFixed(2),
+                    grindingCost: newGrindingCost.toFixed(2),
+                    amount: newTransactionAmount.toFixed(2),
+                    netWeight: newTransactionNetWeight.toFixed(2),
+                    date: new Date().toLocaleDateString('ur-PK'),
+                    time: new Date().toLocaleTimeString('ur-PK', { hour: '2-digit', minute: '2-digit' }),
+                    noSafai, noKatoti, billInFlour,
+                    transactionType: 'Weight Added'
+                };
+
+                // Update the main record with new totals
+                updatedRecord.totalWeight = (parseFloat(updatedRecord.totalWeight) + additionalWeight).toFixed(2);
+                updatedRecord.netWeight = (parseFloat(updatedRecord.netWeight) + newTransactionNetWeight).toFixed(2);
+                updatedRecord.katotiWeight = (parseFloat(updatedRecord.katotiWeight) + newKatotiWeight).toFixed(2);
+                updatedRecord.amount = (parseFloat(updatedRecord.amount) + newTransactionAmount).toFixed(2);
+                updatedRecord.balance = (parseFloat(updatedRecord.balance) + newTransactionAmount).toFixed(2);
+                
+                // Add new transaction to history
+                if (!updatedRecord.transactions) {
+                    updatedRecord.transactions = [];
+                }
+                updatedRecord.transactions.push(newTransaction);
+                
+                // Check and update status
+                if (parseFloat(updatedRecord.balance) > 0) {
+                    updatedRecord.status = 'unpaid';
+                }
+
+                records[recordIndex] = updatedRecord;
+                localStorage.setItem('khata', JSON.stringify(records));
+            }
+
+            currentRecordToAddWeight = null;
+            addWeightModal.classList.add('hidden');
+            viewRecordsBtn.click();
+        });
+
+
+        function renderRecords(selectedType) {
+            const dateFilterValue = dateFilter.value;
+
+            recordsList.innerHTML = '';
+            summarySection.classList.add('hidden');
+
+            const records = JSON.parse(localStorage.getItem(selectedType)) || [];
+            
+            let filteredRecords = records;
+            if (dateFilterValue) {
+                const filterDate = new Date(dateFilterValue).toLocaleDateString('ur-PK');
+                filteredRecords = records.filter(record => record.date === filterDate);
+            }
+            
+            if (filteredRecords.length === 0) {
+                recordsList.innerHTML = `<p class="text-center text-gray-500 mt-4">کوئی ریکارڈ موجود نہیں ہے۔</p>`;
+                return;
+            }
+
+            filteredRecords.forEach(record => {
+                const recordItem = document.createElement('div');
+                recordItem.className = 'card p-4 mb-4';
+
+                let optionsText = '';
+                if (record.noSafai) {
+                    optionsText += `<span>صفائی نہیں، </span>`;
+                }
+                if (record.noKatoti) {
+                    optionsText += `<span>کٹوتی نہیں، </span>`;
+                }
+                if (record.billInFlour) {
+                    optionsText += `<span>بل آٹا سے ادا ہوگا</span>`;
+                }
+                
+                const statusColor = record.status === 'paid' ? 'text-green-600' : 'text-red-600';
+                const statusText = record.status === 'paid' ? 'وصول شدہ' : 'بقایا';
+
+                let paymentHistoryHtml = '';
+                if (selectedType === 'khata' && record.paymentHistory && record.paymentHistory.length > 0) {
+                    paymentHistoryHtml = `
+                        <div class="mt-4 border-t pt-2">
+                            <h4 class="font-bold text-sm mb-2">وصولی کا تاریخچہ:</h4>
+                            <div class="transactions-list">
+                                ${record.paymentHistory.map(payment => `
+                                    <div class="payment-history-item text-xs text-gray-600">
+                                        <span>${payment.date}</span>
+                                        <span>${payment.amount} روپے</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let transactionHistoryHtml = '';
+                if (selectedType === 'khata' && record.transactions && record.transactions.length > 1) {
+                    transactionHistoryHtml = `
+                        <details class="mt-4 border-t pt-2">
+                            <summary class="font-bold text-sm mb-2 cursor-pointer text-blue-600">
+                                لین دین کی تفصیلات دکھائیں (کل ${record.transactions.length} دفعہ)
+                            </summary>
+                            <div class="transactions-list">
+                                ${record.transactions.map((t, index) => `
+                                    <div class="transaction-item text-xs text-gray-600 mb-2">
+                                        <p><strong>${index + 1}. ${t.transactionType}</strong></p>
+                                        <p>وزن: ${t.weight} کلوگرام، رقم: ${t.amount} روپے</p>
+                                        <p>خالص آٹا: ${t.netWeight} کلوگرام</p>
+                                        <p>تاریخ: ${t.date} | وقت: ${t.time}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>
+                    `;
+                }
+                
+                const addWeightButton = selectedType === 'khata' ? `<button class="bg-purple-500 hover:bg-purple-600 text-white text-sm py-2 px-4 rounded-full transition-colors" data-action="add-weight" data-id="${record.id}" data-type="${selectedType}">وزن شامل کریں</button>` : '';
+
+                recordItem.innerHTML = `
+                    <p><strong>نام:</strong> ${record.customerName}</p>
+                    <p><strong>تاریخ:</strong> ${record.date}</p>
+                    <p><strong>کل وزن:</strong> ${record.totalWeight} کلوگرام</p>
+                    <p><strong>کل کٹوتی کا وزن:</strong> ${record.katotiWeight} کلوگرام</p>
+                    <p><strong>کل بل رقم:</strong> ${record.amount} روپے</p>
+                    <p><strong>کل خالص آٹا:</strong> ${record.netWeight} کلوگرام</p>
+                    ${selectedType === 'khata' ? `<p class="mt-2 text-sm ${statusColor}"><strong>اسٹیٹس:</strong> ${statusText} | بقایا: ${record.balance} روپے</p>` : ''}
+                    ${paymentHistoryHtml}
+                    ${transactionHistoryHtml}
+                    <div class="flex flex-wrap space-x-2 space-x-reverse mt-4">
+                        <button class="bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-4 rounded-full transition-colors" data-action="edit" data-id="${record.id}" data-type="${selectedType}">ایڈٹ</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white text-sm py-2 px-4 rounded-full transition-colors" data-action="delete" data-id="${record.id}" data-type="${selectedType}">ڈیلیٹ</button>
+                        ${selectedType === 'khata' && record.status !== 'paid' ? `<button class="bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded-full transition-colors" data-action="pay" data-id="${record.id}" data-type="${selectedType}">وصول</button>` : ''}
+                        ${addWeightButton}
+                        ${selectedType === 'backup' ? `<button class="bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 px-4 rounded-full transition-colors" data-action="move-to-khata" data-id="${record.id}" data-type="${selectedType}">کھاتے میں شامل کریں</button>` : ''}
+                    </div>
+                `;
+                recordsList.appendChild(recordItem);
+            });
+        }
+
+        function renderSummary() {
+            const khataRecords = JSON.parse(localStorage.getItem('khata')) || [];
+            const backupRecords = JSON.parse(localStorage.getItem('backup')) || [];
+            const combinedRecords = [...khataRecords, ...backupRecords];
+            
+            let filteredRecords = combinedRecords;
+            if (dateFilter.value) {
+                const filterDate = new Date(dateFilter.value).toLocaleDateString('ur-PK');
+                filteredRecords = combinedRecords.filter(record => record.date === filterDate);
+            }
+
+            const totalNetWeight = filteredRecords.reduce((sum, record) => sum + parseFloat(record.netWeight), 0);
+            const totalKatotiWeight = filteredRecords.reduce((sum, record) => sum + parseFloat(record.katotiWeight), 0);
+            const totalAmount = filteredRecords.reduce((sum, record) => sum + parseFloat(record.amount), 0);
+            
+            recordsList.innerHTML = '';
+            summarySection.classList.remove('hidden');
+            totalNetWeightSpan.textContent = totalNetWeight.toFixed(2);
+            totalKatotiWeightSpan.textContent = totalKatotiWeight.toFixed(2);
+            totalAmountSpan.textContent = totalAmount.toFixed(2);
+        }
+    </script>
+</body>
+</html>
+
